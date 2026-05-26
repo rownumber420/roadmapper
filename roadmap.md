@@ -64,8 +64,8 @@ roadmap-orchestrator/
 ├── .env.example
 ├── src/
 │   ├── __init__.py
-│   ├── main.py                 # argparse CLI: --idea, --project-dir, --iterations
-│   ├── config.py               # pydantic-settings: model names, paths, timeouts
+│   ├── main.py                 # argparse CLI: --idea, --project-dir, --iterations, --writer-model, --reviewer-model
+│   ├── config.py               # pydantic-settings: model names, paths, timeouts, CLI overrides
 │   ├── state.py                # RoadmapState TypedDict
 │   ├── graph.py                # LangGraph StateGraph with builder
 │   ├── db.py                   # iteration_logs table schema + insert/query helpers
@@ -214,7 +214,9 @@ docker compose up -d postgres gui
 docker compose run orchestrator \
   --idea /codebase/initial_idea.md \
   --project-dir /codebase \
-  --max-iterations 6
+  --max-iterations 6 \
+  --writer-model opencode/deepseek-v4-flash-free \
+  --reviewer-model gemini-2.0-flash
 
 # 3. Browse logs at http://localhost:8501
 ```
@@ -276,7 +278,7 @@ Create the project skeleton: `docker-compose.yml`, `Dockerfile`, `requirements.t
 **Test**: `docker compose build` succeeds.
 
 ### Task 2 — Core utilities
-Implement `src/ansi.py` (ANSI escape stripping), `src/state.py` (RoadmapState TypedDict), `src/config.py` (Pydantic settings).
+Implement `src/ansi.py` (ANSI escape stripping), `src/state.py` (RoadmapState TypedDict), `src/config.py` (Pydantic-settings with `WRITER_MODEL`, `REVIEWER_MODEL`, `WRITER_TIMEOUT`, `REVIEWER_TIMEOUT`, `MAX_ITERATIONS`, `PROJECT_PATH`, `OUTPUT_PATH`, `DATABASE_URL`). All settings read from env / `.env`, overridable by CLI args in main.py.
 
 **Files**: `src/ansi.py`, `src/state.py`, `src/config.py`
 
@@ -304,11 +306,11 @@ Implement `src/nodes/reviewer.py`. Reads `roadmap.md`, constructs review prompt,
 **Test**: Place a test `roadmap.md` in `/output`, run reviewer node standalone, verify it returns `is_stable=True/False` and DB has a row.
 
 ### Task 6 — Graph + CLI entry
-Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI).
+Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--max-iterations`, `--writer-model`, `--reviewer-model`). CLI args are written to config before graph execution.
 
 **Files**: `src/graph.py`, `src/main.py`
 
-**Test**: `docker compose run orchestrator --idea /codebase/initial_idea.md --max-iterations 3` completes end-to-end.
+**Test**: `docker compose run orchestrator --idea /codebase/initial_idea.md --max-iterations 3 --writer-model opencode/... --reviewer-model gemini-2.0-flash` completes end-to-end.
 
 ### Task 7 — Streamlit GUI
 Implement `gui/app.py`. Connects to PostgreSQL, lists runs, expands to show iterations (prompt, output, feedback, roadmap).
