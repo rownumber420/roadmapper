@@ -29,8 +29,6 @@ services:
     volumes:
       - ~/.gemini/:/mnt/host-gemini:ro
       - gemini_config:/home/appuser/.gemini
-      - .:/codebase:ro
-      - ./output:/output
 
   gui:
     build: .

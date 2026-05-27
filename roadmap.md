@@ -34,8 +34,9 @@ Automate the Writer-Reviewer agent loop for creating and refining a `roadmap.md`
 │  │  │ (custom SQL table) │                 │    │
 │  │  └────────────────────┘                 │    │
 │  │                                         │    │
-│  │  Mounts: /codebase (ro), /output (rw)   │    │
-│  │          ~/.gemini (rw)                 │    │
+│  │  Mounts: ~/.gemini (rw)                 │    │
+│  │  Target repo mounted at /codebase (ro)  │    │
+│  │  Output mounted at /output (rw)         │    │
 │  └─────────────────────────────────────────┘    │
 │                                                 │
 │  ┌─────────────────────┐  ┌──────────────────┐  │
@@ -64,7 +65,7 @@ roadmap-orchestrator/
 ├── .env.example
 ├── src/
 │   ├── __init__.py
-│   ├── main.py                 # argparse CLI: --idea, --project-dir, --iterations, --writer-model, --reviewer-model
+│   ├── main.py                 # argparse CLI: --idea, --project-dir, --output-dir, --iterations, --writer-model, --reviewer-model
 │   ├── config.py               # pydantic-settings: model names, paths, timeouts, CLI overrides
 │   ├── state.py                # RoadmapState TypedDict
 │   ├── graph.py                # LangGraph StateGraph with builder
@@ -121,10 +122,23 @@ The Streamlit GUI queries only `iteration_logs` — fully decoupled from LangGra
 
 ```python
 initial_idea = Path("/codebase/initial_idea.md").read_text()
-prompt = f"""Read the following initial idea and create a roadmap.md file
-at /output/roadmap.md with atomic tasks, each with verification steps.
-Include short code examples for each task if possible.
-Only modify roadmap.md.
+prompt = f"""You are in /app. The target codebase is mounted at /codebase.
+Explore /codebase thoroughly before writing — understand the project
+structure, existing code conventions, directory layout, package structure,
+and any existing configuration files.
+
+Look for context files in /codebase that document project conventions
+(e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
+Use them to align the roadmap with the project's actual setup.
+
+Read the initial idea below and create a roadmap.md file at /output/roadmap.md.
+Each task should:
+- Be atomic (one deliverable each)
+- Reference real file paths in /codebase
+- Include a short code example or diff where applicable
+- Have a clear verification step
+
+Only create /output/roadmap.md. Do not modify anything in /codebase.
 
 INITIAL IDEA:
 {initial_idea}
@@ -155,21 +169,24 @@ stdout, stderr = proc.communicate(timeout=300)
 
 ```python
 roadmap_content = Path("/output/roadmap.md").read_text()
-prompt = f"""Review this roadmap for correctness, bugs, and feasibility.
-Check that each task includes short code examples where applicable.
+prompt = f"""You are in /app. The target codebase is mounted at /codebase.
+Before giving feedback, explore /codebase to verify the roadmap against
+the actual project. Check that:
+- Referenced file paths and modules actually exist
+- Code examples match the project's real patterns and conventions
+- Proposed tasks are compatible with the existing architecture
+
+Also check context files in /codebase (AGENTS.md, GEMINI.md, etc.)
+to see if the roadmap aligns with documented conventions.
+
+Review this roadmap for correctness, bugs, and feasibility.
+Check that each task is atomic, has a verification step, and includes
+short code examples where applicable.
 Output FEEDBACK: <issues> and STATUS: ACCEPT or REVISE. Be critical.
 
 ROADMAP:
 {roadmap_content}
 """
-
-proc = subprocess.Popen(
-    ["gemini", "-"],
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    stdin=subprocess.PIPE,
-)
-stdout, stderr = proc.communicate(input=prompt.encode(), timeout=300)
 ```
 
 - No PTY needed — `gemini -` reads from stdin pipe and auto-disables interactive mode
@@ -198,8 +215,8 @@ Three services:
 
 ### Volume Mounts
 - `~/.gemini/` → `/home/user/.gemini/` (Gemini OAuth credentials, **read-write** — token refresh requires write access)
-- Target project dir → `/codebase` (read-only)
-- `./output` → `/output` (writable for roadmap.md)
+- Target project dir → `/codebase` (read-only) — specified at runtime via `-v /path/to/target:/codebase:ro`
+- Output dir → `/output` (writable for roadmap.md) — specified at runtime via `-v /path/to/output:/output`
 
 ### OpenCode auth
 Appears to work without authentication so far. Before finalizing, verify by running `opencode run "hello"` inside the container during development. If an API key is needed, add it to `.env` and pass via environment variable or mount `~/.local/share/opencode/auth.json`.
@@ -210,10 +227,14 @@ Appears to work without authentication so far. Before finalizing, verify by runn
 # 1. Start infra (postgres + optional GUI)
 docker compose up -d postgres gui
 
-# 2. Run the workflow (one-shot)
-docker compose run orchestrator \
+# 2. Run the workflow (one-shot) — target codebase and output dir at runtime
+docker compose run \
+  -v /path/to/target-project:/codebase:ro \
+  -v /path/to/output:/output \
+  orchestrator \
   --idea /codebase/initial_idea.md \
   --project-dir /codebase \
+  --output-dir /output \
   --max-iterations 6 \
   --writer-model opencode/deepseek-v4-flash-free \
   --reviewer-model gemini-2.0-flash
@@ -263,8 +284,8 @@ def strip_ansi(text: str) -> str:
 - **Gemini OAuth token refresh**: Mount `~/.gemini/` as **read-write** (not read-only) so token refreshes don't crash the container.
 - **OpenCode auth**: Verify during development. If API keys are needed, mount `~/.local/share/opencode/auth.json` or use env vars.
 - **ANSI noise**: Strip ANSI escape codes from all captured agent output before storing to state or DB.
-- **File safety**: Writer only has write access to `/output`; codebase is mounted read-only.
-- **Shared filesystem**: Both agents share the same filesystem as the orchestrator. Acceptable for a personal tool, but worth noting for security considerations.
+- **File safety**: Writer only has write access to `/output`; codebase must be mounted read-only by the user at runtime.
+- **Shared filesystem**: Both agents share the same filesystem as the orchestrator via runtime mounts. Acceptable for a personal tool, but worth noting for security considerations.
 
 ## Implementation Tasks
 
@@ -278,7 +299,7 @@ Create the project skeleton: `docker-compose.yml`, `Dockerfile`, `requirements.t
 **Test**: `docker compose build` succeeds.
 
 ### Task 2 — Core utilities
-Implement `src/ansi.py` (ANSI escape stripping), `src/state.py` (RoadmapState TypedDict), `src/config.py` (Pydantic-settings with `WRITER_MODEL`, `REVIEWER_MODEL`, `WRITER_TIMEOUT`, `REVIEWER_TIMEOUT`, `MAX_ITERATIONS`, `PROJECT_PATH`, `OUTPUT_PATH`, `DATABASE_URL`). All settings read from env / `.env`, overridable by CLI args in main.py.
+Implement `src/ansi.py` (ANSI escape stripping), `src/state.py` (RoadmapState TypedDict), `src/config.py` (Pydantic-settings with `WRITER_MODEL`, `REVIEWER_MODEL`, `WRITER_TIMEOUT`, `REVIEWER_TIMEOUT`, `MAX_ITERATIONS`, `PROJECT_PATH`, `OUTPUT_PATH` (default `/output`), `DATABASE_URL`). All settings read from env / `.env`, overridable by CLI args in main.py.
 
 **Files**: `src/ansi.py`, `src/state.py`, `src/config.py`
 
@@ -306,11 +327,11 @@ Implement `src/nodes/reviewer.py`. Reads `roadmap.md`, constructs review prompt,
 **Test**: Place a test `roadmap.md` in `/output`, run reviewer node standalone, verify it returns `is_stable=True/False` and DB has a row.
 
 ### Task 6 — Graph + CLI entry
-Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--max-iterations`, `--writer-model`, `--reviewer-model`). CLI args are written to config before graph execution.
+Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--output-dir`, `--max-iterations`, `--writer-model`, `--reviewer-model`). CLI args are written to config before graph execution.
 
 **Files**: `src/graph.py`, `src/main.py`
 
-**Test**: `docker compose run orchestrator --idea /codebase/initial_idea.md --max-iterations 3 --writer-model opencode/... --reviewer-model gemini-2.0-flash` completes end-to-end.
+**Test**: `docker compose run -v /path/to/target:/codebase:ro -v /path/to/output:/output orchestrator --idea /codebase/initial_idea.md --project-dir /codebase --output-dir /output --max-iterations 3 --writer-model opencode/... --reviewer-model gemini-2.0-flash` completes end-to-end.
 
 ### Task 7 — Streamlit GUI
 Implement `gui/app.py`. Connects to PostgreSQL, lists runs, expands to show iterations (prompt, output, feedback, roadmap).
