@@ -1,3 +1,5 @@
+import contextlib
+
 import psycopg2
 import psycopg2.extras
 
@@ -32,8 +34,13 @@ FROM iteration_logs GROUP BY run_id ORDER BY started_at DESC
 """
 
 
+@contextlib.contextmanager
 def _conn():
-    return psycopg2.connect(get_settings().database_url)
+    conn = psycopg2.connect(get_settings().database_url)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def ensure_table():

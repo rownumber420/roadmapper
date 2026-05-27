@@ -18,6 +18,9 @@ Look for context files in /codebase that document project conventions
 (e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
 Use them to align the roadmap with the project's actual setup.
 
+THIS IS A ROADMAP REVIEW ONLY. DO NOT modify any files. DO NOT write code.
+DO NOT create, edit, or delete any files. Read-only analysis.
+
 Review this roadmap for correctness, bugs, and feasibility.
 Check that:
 - All requirements in the initial idea are addressed by the roadmap
@@ -58,14 +61,20 @@ def reviewer_node(state: dict) -> dict:
             "--skip-trust",
             "--approval-mode", "yolo",
             "--include-directories", "/codebase",
+            "--include-directories", "/app/codebase",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         stdin=subprocess.PIPE,
     )
-    stdout, stderr = proc.communicate(
-        input=prompt.encode(), timeout=settings.reviewer_timeout
-    )
+    try:
+        stdout, stderr = proc.communicate(
+            input=prompt.encode(), timeout=settings.reviewer_timeout
+        )
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        raise
 
     stdout_str = (
         stdout.decode(errors="replace") if isinstance(stdout, bytes) else ""
@@ -74,7 +83,7 @@ def reviewer_node(state: dict) -> dict:
         stderr.decode(errors="replace") if isinstance(stderr, bytes) else ""
     )
 
-    (output_path / "prior_feedback.md").write_text(stdout_str)
+    (output_path / "prior_feedback.md").write_text(strip_ansi(stdout_str))
 
     status_match = re.search(
         r"STATUS:\s*(ACCEPT|REVISE)", stdout_str, re.IGNORECASE
@@ -89,7 +98,7 @@ def reviewer_node(state: dict) -> dict:
         iteration=iteration,
         node_type="reviewer",
         raw_output=strip_ansi(stdout_str + "\n" + stderr_str),
-        feedback=stdout_str,
+        feedback=strip_ansi(stdout_str),
         roadmap_content=roadmap_content,
         prompt=prompt,
     )

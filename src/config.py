@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     writer_model: str = "opencode/deepseek-v4-flash-free"
-    reviewer_model: str = "gemini-3-flash-preview"
+    reviewer_model: str = "gemini-3.1-flash-lite-preview"
     writer_timeout: int = 300
     reviewer_timeout: int = 300
     max_iterations: int = 6

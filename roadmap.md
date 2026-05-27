@@ -187,6 +187,9 @@ Look for context files in /codebase that document project conventions
 (e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
 Use them to align the roadmap with the project's actual setup.
 
+THIS IS A ROADMAP REVIEW ONLY. DO NOT modify any files. DO NOT write code.
+DO NOT create, edit, or delete any files. Read-only analysis.
+
 Review this roadmap for correctness, bugs, and feasibility.
 Check that:
 - All requirements in the initial idea are addressed by the roadmap
