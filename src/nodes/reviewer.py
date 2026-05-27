@@ -31,7 +31,10 @@ Check that:
 - Proposed tasks are compatible with the existing architecture
 - Scope is proportional (no gold-plating, no omissions)
 
-Output FEEDBACK: <issues> and STATUS: ACCEPT or REVISE. Be critical.
+List all issues under FEEDBACK: <issues>. Then output STATUS: ACCEPT or REVISE.
+Only use STATUS: ACCEPT if the roadmap has zero issues — no errors, no omissions,
+no concerns at all. If you have even one actionable item under <issues>, use STATUS: REVISE.
+Be critical.
 
 INITIAL IDEA:
 {initial_idea}

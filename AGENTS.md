@@ -45,7 +45,7 @@ docker compose run \
 - `gemini` OAuth token refresh needs `~/.gemini/` mounted **read-write**
 
 ### Files not yet implemented (as of this writing)
-`src/main.py`, `src/graph.py`, `gui/app.py`
+`gui/app.py`
 
 ### Style
 - `pydantic-settings` for config (reads env / `.env`, overridable by `configure()`)

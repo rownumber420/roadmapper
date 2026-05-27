@@ -29,6 +29,11 @@ Each task should:
 
 Only create /output/roadmap.md. Do not modify anything in /app/codebase.
 
+If the PREVIOUS FEEDBACK contains an item you believe is a false alarm
+or based on a misunderstanding, you may note your reasoning in the roadmap
+rather than making the requested change. Explain clearly why the feedback
+does not apply.
+
 {feedback_section}INITIAL IDEA:
 {initial_idea}
 """
