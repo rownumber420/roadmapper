@@ -11,23 +11,23 @@ def build_prompt(initial_idea: str, prior_feedback: str = "") -> str:
     if prior_feedback:
         feedback_section = f"PREVIOUS FEEDBACK TO ADDRESS:\n{prior_feedback}\n\n"
 
-    return f"""You are in /app. The target codebase is mounted at /codebase.
-Explore /codebase thoroughly before writing — understand the project
-structure, existing code conventions, directory layout, package structure,
-and any existing configuration files.
+    return f"""You are in /app. The target codebase is accessible at /app/codebase
+(a symlink to /codebase). Explore /app/codebase thoroughly before writing
+— understand the project structure, existing code conventions, directory
+layout, package structure, and any existing configuration files.
 
-Look for context files in /codebase that document project conventions
+Look for context files in /app/codebase that document project conventions
 (e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
 Use them to align the roadmap with the project's actual setup.
 
 Read the initial idea below and create a roadmap.md file at /output/roadmap.md.
 Each task should:
 - Be atomic (one deliverable each)
-- Reference real file paths in /codebase
+- Reference real file paths in /app/codebase
 - Include a short code example or diff where applicable
 - Have a clear verification step
 
-Only create /output/roadmap.md. Do not modify anything in /codebase.
+Only create /output/roadmap.md. Do not modify anything in /app/codebase.
 
 {feedback_section}INITIAL IDEA:
 {initial_idea}

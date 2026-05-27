@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+ln -sf /codebase /app/codebase
+
 if [ -d /mnt/host-gemini ] && [ ! -f /home/appuser/.gemini/oauth_creds.json ]; then
   echo "Initializing gemini config from host mount..."
   mkdir -p /home/appuser/.gemini
