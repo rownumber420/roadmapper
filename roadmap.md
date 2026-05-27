@@ -145,19 +145,26 @@ INITIAL IDEA:
 """
 ```
 
-- Run using `opencode run` with prompt written to a temp file to avoid ARG_MAX limits:
+- Run using `opencode run`. Pass prompt as CLI positional (fast path) if under 100KB; fall back to `--file` for larger prompts to avoid ARG_MAX:
 
 ```python
-proc = subprocess.Popen(
-    ["opencode", "run", "--model", model, "--file", prompt_path, "--no-color"],
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    stdin=subprocess.DEVNULL,
-)
+prompt_bytes = prompt.encode()
+if len(prompt_bytes) > 100_000:
+    prompt_path = output_path / ".writer_prompt.md"
+    prompt_path.write_text(prompt)
+    cmd = ["opencode", "run", "--model", model,
+           "--dangerously-skip-permissions",
+           "--file", str(prompt_path),
+           "Follow the instructions in the attached file."]
+else:
+    cmd = ["opencode", "run", "--model", model,
+           "--dangerously-skip-permissions", prompt]
+
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
 stdout, stderr = proc.communicate(timeout=300)
 ```
 
-- Try standard `subprocess.Popen` first (with `--no-color`, many tools gracefully fall back to non-interactive). If it hangs, swap to `pexpect` (handles PTY allocation automatically) or `pty.openpty()`.
+- `--dangerously-skip-permissions` is required because opencode runs in non-interactive mode (no TTY) and would auto-reject file access prompts otherwise.
 - Strip ANSI escape sequences from captured output (via `src/ansi.py`)
 - Capture stdout, stderr, read resulting `/output/roadmap.md`
 - Log all content to `iteration_logs` table (this is the source of truth)
@@ -165,16 +172,19 @@ stdout, stderr = proc.communicate(timeout=300)
 
 ### Reviewer Node
 
-- Read roadmap.md content in Python and pipe into Gemini CLI via subprocess stdin (avoids ARG_MAX limits):
+- Read both the initial idea and the roadmap, then pipe the review prompt into Gemini CLI via subprocess stdin (avoids ARG_MAX limits):
 
 ```python
-roadmap_content = Path("/output/roadmap.md").read_text()
+initial_idea = Path(settings.idea_path).read_text()
+roadmap_content = Path(settings.output_path / "roadmap.md").read_text()
 prompt = f"""You are in /app. The target codebase is mounted at /codebase.
 Before giving feedback, explore /codebase to verify the roadmap against
 the actual project. Check that:
+- All requirements in the initial idea are addressed by the roadmap
 - Referenced file paths and modules actually exist
 - Code examples match the project's real patterns and conventions
 - Proposed tasks are compatible with the existing architecture
+- Scope is proportional (no gold-plating, no omissions)
 
 Also check context files in /codebase (AGENTS.md, GEMINI.md, etc.)
 to see if the roadmap aligns with documented conventions.
@@ -183,6 +193,9 @@ Review this roadmap for correctness, bugs, and feasibility.
 Check that each task is atomic, has a verification step, and includes
 short code examples where applicable.
 Output FEEDBACK: <issues> and STATUS: ACCEPT or REVISE. Be critical.
+
+INITIAL IDEA:
+{initial_idea}
 
 ROADMAP:
 {roadmap_content}
@@ -273,7 +286,7 @@ def strip_ansi(text: str) -> str:
 
 ## Edge Cases & Considerations
 
-- **ARG_MAX limits**: Passing large prompts as CLI args can fail with "Argument list too long". Writer: use `--file` flag or write prompt to a temp file. Reviewer: pass prompt via `subprocess.communicate(input=...)` to stdin — no length limit.
+- **ARG_MAX limits**: Passing large prompts as CLI args can fail with "Argument list too long" (Linux: ~128KB per arg, ~2MB total). Writer: pass prompt as CLI positional if under 100KB; fall back to `--file` for larger prompts. Reviewer: pass prompt via `subprocess.communicate(input=...)` to stdin — no length limit.
 - **PTY only for Writer**: `opencode run` may need a TTY. Reviewer (`gemini -`) reads stdin and auto-disables interactive mode — no PTY needed.
 - **Dockerfile deps**: `python:3.12-slim` needs `curl` installed before Node.js setup script can run.
 - **State redundancy**: `RoadmapState` stores only lightweight refs (run_id, iteration, flags). Full text content lives only in `iteration_logs` — avoids duplicating large blobs in LangGraph checkpointer.
@@ -320,11 +333,11 @@ Implement `src/nodes/writer.py`. Reads `initial_idea.md` and prior feedback from
 **Test**: Place a test `initial_idea.md` in `/output`, run writer node standalone, verify `roadmap.md` is produced and DB has a row.
 
 ### Task 5 — Reviewer node
-Implement `src/nodes/reviewer.py`. Reads `roadmap.md`, constructs review prompt, passes it via `subprocess.Popen` with `stdin=subprocess.PIPE` + `communicate(input=prompt.encode())` to `gemini -`, parses response for `STATUS: ACCEPT` or `STATUS: REVISE`, logs to DB.
+Implement `src/nodes/reviewer.py`. Reads `initial_idea.md` (from `settings.idea_path`) and `roadmap.md` (from `settings.output_path`), constructs review prompt that includes both, passes it via `subprocess.Popen` with `stdin=subprocess.PIPE` + `communicate(input=prompt.encode())` to `gemini -`, parses response for `STATUS: ACCEPT` or `STATUS: REVISE`, logs to DB.
 
 **Files**: `src/nodes/reviewer.py`
 
-**Test**: Place a test `roadmap.md` in `/output`, run reviewer node standalone, verify it returns `is_stable=True/False` and DB has a row.
+**Test**: Place a test `initial_idea.md` and `roadmap.md` in `/output`, run reviewer node standalone, verify it returns `is_stable=True/False` and DB has a row.
 
 ### Task 6 — Graph + CLI entry
 Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--output-dir`, `--max-iterations`, `--writer-model`, `--reviewer-model`). CLI args are written to config before graph execution.

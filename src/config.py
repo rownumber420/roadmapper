@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     reviewer_timeout: int = 300
     max_iterations: int = 6
     project_path: str = "/codebase"
+    idea_path: str = "/codebase/initial_idea.md"
     output_path: str = "/output"
     database_url: str = (
         "postgresql://roadmapper:roadmapper@postgres:5432/roadmapper"
