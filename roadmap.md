@@ -7,42 +7,42 @@ Automate the Writer-Reviewer agent loop for creating and refining a `roadmap.md`
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Docker Compose                                 │
-│                                                 │
-│  ┌─────────────────────────────────────────┐    │
-│  │  orchestrator (Python + LangGraph)      │    │
-│  │                                         │    │
-│  │  ┌──────────┐   subprocess    ┌────────┐│    │
-│  │  │ Writer   │ ───────────────>│opencode││    │
-│  │  │ Node     │<─────────────── │ run    ││    │
-│  │  └──────────┘   roadmap.md    └────────┘│    │
-│  │        │                                │    │
-│  │  ┌──────────┐   subprocess    ┌────────┐│    │
-│  │  │ Reviewer │ ───────────────>│ gemini ││    │
-│  │  │ Node     │<─────────────── │ cli    ││    │
-│  │  └──────────┘   feedback      └────────┘│    │
-│  │        │                                │    │
-│  │  ┌─────▼──────────────┐                 │    │
-│  │  │ Checkpointer       │                 │    │
-│  │  │ (PostgreSQL via    │                 │    │
-│  │  │  LangGraph)        │                 │    │
-│  │  └─────┬──────────────┘                 │    │
-│  │        │ also writes to                 │    │
-│  │  ┌─────▼──────────────┐                 │    │
-│  │  │ iteration_logs     │                 │    │
-│  │  │ (custom SQL table) │                 │    │
-│  │  └────────────────────┘                 │    │
-│  │                                         │    │
-│  │  Mounts: ~/.gemini (rw)                 │    │
-│  │  Target repo mounted at /codebase (ro)  │    │
-│  │  Output mounted at /output (rw)         │    │
-│  └─────────────────────────────────────────┘    │
-│                                                 │
-│  ┌─────────────────────┐  ┌──────────────────┐  │
-│  │  PostgreSQL         │  │  Streamlit GUI   │  │
-│  └─────────────────────┘  └──────────────────┘  │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Docker Compose                                     │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐    │
+│  │  orchestrator (Python + LangGraph)          │    │
+│  │                                             │    │
+│  │  ┌──────────┐  Agent abstraction  ┌────────┐│    │
+│  │  │ Writer   │ ──── get_agent() ──>│opencode││    │
+│  │  │ Node     │<─── parse/write ────│ run    ││    │
+│  │  └──────────┘   roadmap.md        └────────┘│    │
+│  │        │                                    │    │
+│  │  ┌──────────┐  Agent abstraction  ┌────────┐│    │
+│  │  │ Reviewer │ ──── get_agent() ──>│ gemini ││    │
+│  │  │ Node     │<─── parse_status ───│ cli    ││    │
+│  │  └──────────┘   feedback          └────────┘│    │
+│  │        │                                    │    │
+│  │  ┌─────▼──────────────┐                     │    │
+│  │  │ Checkpointer       │                     │    │
+│  │  │ (PostgreSQL via    │                     │    │
+│  │  │  LangGraph)        │                     │    │
+│  │  └─────┬──────────────┘                     │    │
+│  │        │ also writes to                     │    │
+│  │  ┌─────▼──────────────┐                     │    │
+│  │  │ iteration_logs     │                     │    │
+│  │  │ (custom SQL table) │                     │    │
+│  │  └────────────────────┘                     │    │
+│  │                                             │    │
+│  │  Mounts: ~/.gemini (rw)                     │    │
+│  │  Target repo mounted at /codebase (ro)      │    │
+│  │  Output mounted at /output (rw)             │    │
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+│  ┌─────────────────────┐  ┌──────────────────┐      │
+│  │  PostgreSQL         │  │  Streamlit GUI   │      │
+│  └─────────────────────┘  └──────────────────┘      │
+└─────────────────────────────────────────────────────┘
 ```
 
 ## LangGraph Flow
@@ -65,16 +65,21 @@ roadmap-orchestrator/
 ├── .env.example
 ├── src/
 │   ├── __init__.py
-│   ├── main.py                 # argparse CLI: --idea, --project-dir, --output-dir, --iterations, --writer-model, --reviewer-model
-│   ├── config.py               # pydantic-settings: model names, paths, timeouts, CLI overrides
+│   ├── main.py                 # argparse CLI: --idea, --writer-agent, --writer-model, --reviewer-agent, --reviewer-model, etc.
+│   ├── config.py               # pydantic-settings: agent types, model names, paths, timeouts, CLI overrides
 │   ├── state.py                # RoadmapState TypedDict
 │   ├── graph.py                # LangGraph StateGraph with builder
 │   ├── db.py                   # iteration_logs table schema + insert/query helpers
 │   ├── ansi.py                 # strip ANSI escape sequences from agent output
+│   ├── agents/                 # Pluggable agent abstraction
+│   │   ├── __init__.py         # Registry: register(), get_agent()
+│   │   ├── base.py             # Agent ABC + AgentResult
+│   │   ├── opencode.py         # OpenCodeAgent (writer)
+│   │   └── gemini.py           # GeminiAgent (reviewer)
 │   └── nodes/
 │       ├── __init__.py
-│       ├── writer.py           # subprocess: opencode run ...
-│       └── reviewer.py         # subprocess: gemini ...
+│       ├── writer.py           # Uses get_agent(settings.writer_agent)
+│       └── reviewer.py         # Uses get_agent(settings.reviewer_agent)
 └── gui/
     ├── __init__.py
     └── app.py                  # Streamlit: query iteration_logs directly
@@ -113,109 +118,75 @@ CREATE TABLE iteration_logs (
 
 The Streamlit GUI queries only `iteration_logs` — fully decoupled from LangGraph internals.
 
-## Node Implementation
+## Agent Abstraction
+
+Agent-specific logic (CLI invocation, prompt passing, output parsing) is factored out into pluggable classes under `src/agents/`. Each node resolves its agent via `get_agent()` from the registry, keeping the node itself generic.
+
+### Agent interface (`src/agents/base.py`)
+
+```python
+class AgentResult:
+    stdout: str
+    stderr: str
+
+class Agent(ABC):
+    name: str = ""  # set by subclasses, used as registry key
+
+    def build_command(self, prompt: str, output_path: Path, model: str) -> list[str]
+    def get_stdin_data(self, prompt: str) -> bytes | None
+    def stdin_mode(self) -> int                    # subprocess.PIPE or DEVNULL
+    def parse_status(self, stdout: str) -> bool    # extract ACCEPT/REVISE
+```
+
+### OpenCodeAgent (`src/agents/opencode.py`)
+
+- Constructs `opencode run --model <model> --dangerously-skip-permissions [--file <path>] <prompt>`
+- If prompt exceeds 100KB, writes prompt to `output_path /.writer_prompt.md` and uses `--file` to avoid ARG_MAX
+- `stdin_mode = DEVNULL`, `get_stdin_data()` returns `None`
+- `parse_status()` uses `STATUS:\s*(ACCEPT|REVISE)` regex (identical to GeminiAgent)
+
+### GeminiAgent (`src/agents/gemini.py`)
+
+- Constructs `gemini --model <model> --prompt - --skip-trust --approval-mode yolo --include-directories /codebase --include-directories /app/codebase --include-directories /output`
+- `stdin_mode = PIPE`, `get_stdin_data()` returns `prompt.encode()`
+- `parse_status()` regex-matches `STATUS: ACCEPT` or `STATUS: REVISE`
+- Both agents are fully symmetric — any agent can serve as writer or reviewer
+
+### Adding a new agent
+
+```python
+# src/agents/claude.py
+class ClaudeAgent(Agent):
+    name = "claude"
+    def build_command(self, prompt, output_path, model):
+        return ["claude", "--model", model, ...]
+
+# Register it
+from src.agents.claude import ClaudeAgent
+register(ClaudeAgent)
+
+# CLI: --writer-agent claude --writer-model claude-sonnet-4
+```
 
 ### Writer Node
 
 - Write `initial_idea.md` and any prior feedback as files to `/output/prompt_idea.md` and `/output/prior_feedback.md`
-- Read file contents in Python and inject directly into the prompt string (avoids relying on `@filename` syntax):
-
-```python
-initial_idea = Path("/codebase/initial_idea.md").read_text()
-prompt = f"""You are in /app. The target codebase is accessible at /app/codebase
-(a symlink to /codebase). Explore /app/codebase thoroughly before writing
-— understand the project structure, existing code conventions, directory
-layout, package structure, and any existing configuration files.
-
-Look for context files in /app/codebase that document project conventions
-(e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
-Use them to align the roadmap with the project's actual setup.
-
-Read the initial idea below and create a roadmap.md file at /output/roadmap.md.
-Each task should:
-- Be atomic (one deliverable each)
-- Reference real file paths in /app/codebase
-- Include a short code example or diff where applicable
-- Have a clear verification step
-
-Only create /output/roadmap.md. Do not modify anything in /app/codebase.
-
-INITIAL IDEA:
-{initial_idea}
-"""
-```
-
-- Run using `opencode run`. Pass prompt as CLI positional (fast path) if under 100KB; fall back to `--file` for larger prompts to avoid ARG_MAX:
-
-```python
-prompt_bytes = prompt.encode()
-if len(prompt_bytes) > 100_000:
-    prompt_path = output_path / ".writer_prompt.md"
-    prompt_path.write_text(prompt)
-    cmd = ["opencode", "run", "--model", model,
-           "--dangerously-skip-permissions",
-           "--file", str(prompt_path),
-           "Follow the instructions in the attached file."]
-else:
-    cmd = ["opencode", "run", "--model", model,
-           "--dangerously-skip-permissions", prompt]
-
-proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
-stdout, stderr = proc.communicate(timeout=300)
-```
-
-- `--dangerously-skip-permissions` is required because opencode runs in non-interactive mode (no TTY) and would auto-reject file access prompts otherwise.
+- Read file contents in Python and inject directly into the prompt string (avoids relying on `@filename` syntax)
+- Resolve agent: `agent = get_agent(settings.writer_agent)`
+- Delegate command building and I/O to the agent
+- After subprocess completes, read `/output/roadmap.md` from disk
 - Strip ANSI escape sequences from captured output (via `src/ansi.py`)
-- Capture stdout, stderr, read resulting `/output/roadmap.md`
-- Log all content to `iteration_logs` table (this is the source of truth)
+- Log all content to `iteration_logs` table
 - Return updated state (iteration +1, no large text blobs)
 
 ### Reviewer Node
 
-- Read both the initial idea and the roadmap, then pipe the review prompt into Gemini CLI via subprocess stdin (avoids ARG_MAX limits):
-
-```python
-initial_idea = Path(settings.idea_path).read_text()
-roadmap_content = Path(settings.output_path / "roadmap.md").read_text()
-prompt = f"""You are in /app. The target codebase is mounted at /codebase
-and also accessible via /app/codebase (symlink). Explore /codebase
-thoroughly before writing — understand the project structure, existing
-code conventions, directory layout, package structure, and any existing
-configuration files.
-
-Look for context files in /codebase that document project conventions
-(e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
-Use them to align the roadmap with the project's actual setup.
-
-THIS IS A ROADMAP REVIEW ONLY. DO NOT modify any files. DO NOT write code.
-DO NOT create, edit, or delete any files. Read-only analysis.
-
-Review this roadmap for correctness, bugs, and feasibility.
-Check that:
-- All requirements in the initial idea are addressed by the roadmap
-- Each task is atomic (one deliverable each)
-- Each task has a clear verification step
-- Referenced file paths and modules actually exist
-- Code examples match the project's real patterns and conventions
-- Proposed tasks are compatible with the existing architecture
-- Scope is proportional (no gold-plating, no omissions)
-
-Output FEEDBACK: <issues> and STATUS: ACCEPT or REVISE. Be critical.
-
-INITIAL IDEA:
-{initial_idea}
-
-ROADMAP:
-{roadmap_content}
-"""
-```
-
-- Run via `gemini --model <model> --prompt - --skip-trust --approval-mode yolo --include-directories /codebase` — reads prompt from stdin, trusts workspace, auto-approves tool calls, and adds `/codebase` to the allowed workspace directories.
-- No PTY needed — reads from stdin pipe and auto-disables interactive mode
-- Strip ANSI escape sequences from captured output
-- Parse response for STATUS (ACCEPT vs REVISE)
+- Read both `initial_idea.md` and `roadmap.md`, construct review prompt
+- Resolve agent: `agent = get_agent(settings.reviewer_agent)`
+- Delegate command building, stdin data, and status parsing to the agent
+- Write full reviewer stdout as `/output/prior_feedback.md` (after ANSI stripping)
 - Log all content to `iteration_logs` table
-- Return feedback and is_stable flag
+- Return feedback and `is_stable` flag
 
 ## Docker Setup
 
@@ -258,7 +229,9 @@ docker compose run \
   --project-dir /codebase \
   --output-dir /output \
   --max-iterations 6 \
+  --writer-agent opencode \
   --writer-model opencode/deepseek-v4-flash-free \
+  --reviewer-agent gemini \
   --reviewer-model gemini-2.0-flash
 
 # 3. Browse logs at http://localhost:8501
@@ -314,51 +287,58 @@ def strip_ansi(text: str) -> str:
 
 Each task is atomic, independently testable, and builds on the previous one.
 
-### Task 1 — Scaffold
+### Task 1 — Scaffold [DONE]
 Create the project skeleton: `docker-compose.yml`, `Dockerfile`, `requirements.txt`, `.env.example`, and all directory stubs.
 
 **Files**: `docker-compose.yml`, `Dockerfile`, `requirements.txt`, `.env.example`, `src/__init__.py`, `gui/__init__.py`, `src/nodes/__init__.py`
 
 **Test**: `docker compose build` succeeds.
 
-### Task 2 — Core utilities
-Implement `src/ansi.py` (ANSI escape stripping), `src/state.py` (RoadmapState TypedDict), `src/config.py` (Pydantic-settings with `WRITER_MODEL`, `REVIEWER_MODEL`, `WRITER_TIMEOUT`, `REVIEWER_TIMEOUT`, `MAX_ITERATIONS`, `PROJECT_PATH`, `OUTPUT_PATH` (default `/output`), `DATABASE_URL`). All settings read from env / `.env`, overridable by CLI args in main.py.
+### Task 2 — Core utilities [DONE]
+Implement `src/ansi.py` (ANSI escape stripping), `src/state.py` (RoadmapState TypedDict), `src/config.py` (Pydantic-settings with `WRITER_AGENT`, `WRITER_MODEL`, `REVIEWER_AGENT`, `REVIEWER_MODEL`, `WRITER_TIMEOUT`, `REVIEWER_TIMEOUT`, `MAX_ITERATIONS`, `PROJECT_PATH`, `OUTPUT_PATH` (default `/output`), `DATABASE_URL`). All settings read from env / `.env`, overridable by CLI args in main.py.
 
 **Files**: `src/ansi.py`, `src/state.py`, `src/config.py`
 
 **Test**: `python -c "from src.ansi import strip_ansi; assert strip_ansi('\x1b[31mhello\x1b[0m') == 'hello'"`
 
-### Task 3 — Database layer
+### Task 3 — Database layer [DONE]
 Implement `src/db.py` with `iteration_logs` table creation (run via app start), insert helper, and query helper. Uses `psycopg2` connecting via `DATABASE_URL`.
 
 **Files**: `src/db.py`
 
 **Test**: Start postgres container, run a script that creates the table, inserts a row, queries it back.
 
-### Task 4 — Writer node
+### Task 4 — Writer node [DONE]
 Implement `src/nodes/writer.py`. Reads `initial_idea.md` and prior feedback from `/output`, constructs prompt, runs `opencode run --model {model} {prompt}` as subprocess, captures output, strips ANSI, reads resulting `roadmap.md`, logs to DB.
 
 **Files**: `src/nodes/writer.py`
 
 **Test**: Place a test `initial_idea.md` in `/output`, run writer node standalone, verify `roadmap.md` is produced and DB has a row.
 
-### Task 5 — Reviewer node
+### Task 5 — Reviewer node [DONE]
 Implement `src/nodes/reviewer.py`. Reads `initial_idea.md` (from `settings.idea_path`) and `roadmap.md` (from `settings.output_path`), constructs review prompt that includes both, passes it via `subprocess.Popen` with `stdin=subprocess.PIPE` + `communicate(input=prompt.encode())` to `gemini -`, parses response for `STATUS: ACCEPT` or `STATUS: REVISE`, logs to DB.
 
 **Files**: `src/nodes/reviewer.py`
 
 **Test**: Place a test `initial_idea.md` and `roadmap.md` in `/output`, run reviewer node standalone, verify it returns `is_stable=True/False` and DB has a row.
 
-### Task 6 — Graph + CLI entry
-Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--output-dir`, `--max-iterations`, `--writer-model`, `--reviewer-model`). CLI args are written to config before graph execution.
+### Task 6 — Graph + CLI entry [DONE]
+Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--output-dir`, `--max-iterations`, `--writer-agent`, `--writer-model`, `--reviewer-agent`, `--reviewer-model`). CLI args are written to config before graph execution.
 
 **Files**: `src/graph.py`, `src/main.py`
 
-**Test**: `docker compose run -v /path/to/target:/codebase:ro -v /path/to/output:/output orchestrator --idea /codebase/initial_idea.md --project-dir /codebase --output-dir /output --max-iterations 3 --writer-model opencode/... --reviewer-model gemini-2.0-flash` completes end-to-end.
+**Test**: `docker compose run -v /path/to/target:/codebase:ro -v /path/to/output:/output orchestrator --idea /codebase/initial_idea.md --project-dir /codebase --output-dir /output --max-iterations 3 --writer-agent opencode --writer-model opencode/... --reviewer-agent gemini --reviewer-model gemini-2.0-flash` completes end-to-end.
 
-### Task 7 — Streamlit GUI
+### Task 7 — Streamlit GUI [IN PROGRESS]
 Implement `gui/app.py`. Connects to PostgreSQL, lists runs, expands to show iterations (prompt, output, feedback, roadmap).
 
 **Files**: `gui/app.py`
 
 **Test**: `docker compose up gui`, open `http://localhost:8501`, see past runs.
+
+### Task 8 — Agent abstraction layer [DONE]
+Extract agent-specific subprocess logic into pluggable classes (`src/agents/`). Each agent (opencode, gemini) gets its own class with methods for command construction, stdin handling, and output parsing. Nodes use `get_agent(name)` to resolve the configured agent at runtime.
+
+**Files**: `src/agents/__init__.py`, `src/agents/base.py`, `src/agents/opencode.py`, `src/agents/gemini.py`, `src/nodes/writer.py`, `src/nodes/reviewer.py`, `src/config.py`, `src/main.py`
+
+**Test**: `python -c "from src.agents import get_agent; assert get_agent('opencode').name == 'opencode'; assert get_agent('gemini').name == 'gemini'"`

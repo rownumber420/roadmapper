@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+from src.agents import get_agent
 from src.ansi import strip_ansi
 from src.config import get_settings
 from src.db import insert_log
@@ -58,38 +59,23 @@ def writer_node(state: dict) -> dict:
     if prior_feedback:
         (output_path / "prompt_feedback.md").write_text(prior_feedback)
 
-    prompt_bytes = prompt.encode()
-    if len(prompt_bytes) > 100_000:
-        prompt_path = output_path / ".writer_prompt.md"
-        prompt_path.write_text(prompt)
-        cmd = [
-            "opencode", "run",
-            "--model", settings.writer_model,
-            "--dangerously-skip-permissions",
-            "--file", str(prompt_path),
-            "Follow the instructions in the attached file.",
-        ]
-    else:
-        cmd = [
-            "opencode", "run",
-            "--model", settings.writer_model,
-            "--dangerously-skip-permissions",
-            prompt,
-        ]
+    agent = get_agent(settings.writer_agent)
+    cmd = agent.build_command(prompt, output_path, settings.writer_model)
 
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        stdin=subprocess.DEVNULL,
+        stdin=agent.stdin_mode,
     )
 
+    timed_out = False
     try:
         stdout, stderr = proc.communicate(timeout=settings.writer_timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
         stdout, stderr = proc.communicate()
-        raise
+        timed_out = True
 
     stdout_str = (
         stdout.decode(errors="replace") if isinstance(stdout, bytes) else ""
@@ -112,6 +98,9 @@ def writer_node(state: dict) -> dict:
         roadmap_content=roadmap_content,
         prompt=prompt,
     )
+
+    if timed_out:
+        raise subprocess.TimeoutExpired(proc.args, settings.writer_timeout)
 
     return {
         "run_id": run_id,

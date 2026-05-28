@@ -1,7 +1,7 @@
-import re
 import subprocess
 from pathlib import Path
 
+from src.agents import get_agent
 from src.ansi import strip_ansi
 from src.config import get_settings
 from src.db import insert_log
@@ -56,28 +56,25 @@ def reviewer_node(state: dict) -> dict:
 
     prompt = build_review_prompt(initial_idea, roadmap_content)
 
+    agent = get_agent(settings.reviewer_agent)
+    cmd = agent.build_command(prompt, output_path, settings.reviewer_model)
+
     proc = subprocess.Popen(
-        [
-            "gemini",
-            "--model", settings.reviewer_model,
-            "--prompt", "-",
-            "--skip-trust",
-            "--approval-mode", "yolo",
-            "--include-directories", "/codebase",
-            "--include-directories", "/app/codebase",
-        ],
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        stdin=subprocess.PIPE,
+        stdin=agent.stdin_mode,
     )
+
+    timed_out = False
     try:
         stdout, stderr = proc.communicate(
-            input=prompt.encode(), timeout=settings.reviewer_timeout
+            input=agent.get_stdin_data(prompt), timeout=settings.reviewer_timeout
         )
     except subprocess.TimeoutExpired:
         proc.kill()
         stdout, stderr = proc.communicate()
-        raise
+        timed_out = True
 
     stdout_str = (
         stdout.decode(errors="replace") if isinstance(stdout, bytes) else ""
@@ -88,10 +85,7 @@ def reviewer_node(state: dict) -> dict:
 
     (output_path / "prior_feedback.md").write_text(strip_ansi(stdout_str))
 
-    status_match = re.search(
-        r"STATUS:\s*(ACCEPT|REVISE)", stdout_str, re.IGNORECASE
-    )
-    is_stable = bool(status_match and status_match.group(1).upper() == "ACCEPT")
+    is_stable = agent.parse_status(stdout_str)
 
     run_id = state.get("run_id", "")
     iteration = state.get("iteration", 0)
@@ -105,6 +99,9 @@ def reviewer_node(state: dict) -> dict:
         roadmap_content=roadmap_content,
         prompt=prompt,
     )
+
+    if timed_out:
+        raise subprocess.TimeoutExpired(proc.args, settings.reviewer_timeout)
 
     return {
         "run_id": run_id,

@@ -25,8 +25,6 @@ docker compose run \
   -v /path/to/output:/output \
   orchestrator \
   --idea /codebase/initial_idea.md \
-  --project-dir /codebase \
-  --output-dir /output \
   --max-iterations 6 \
   --writer-model opencode/deepseek-v4-flash-free \
   --reviewer-model gemini-3.1-flash-lite-preview

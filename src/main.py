@@ -16,10 +16,10 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="Roadmapper orchestrator")
     parser.add_argument("--idea", dest="idea_path", default=None)
-    parser.add_argument("--project-dir", dest="project_path", default=None)
-    parser.add_argument("--output-dir", dest="output_path", default=None)
     parser.add_argument("--max-iterations", type=int, default=None)
+    parser.add_argument("--writer-agent", default=None)
     parser.add_argument("--writer-model", default=None)
+    parser.add_argument("--reviewer-agent", default=None)
     parser.add_argument("--reviewer-model", default=None)
     parser.add_argument("--writer-timeout", type=int, default=None)
     parser.add_argument("--reviewer-timeout", type=int, default=None)
@@ -36,7 +36,6 @@ def main():
 
     initial_state: RoadmapState = {
         "run_id": run_id,
-        "project_path": settings.project_path,
         "iteration": 0,
         "max_iterations": settings.max_iterations,
         "is_stable": False,
