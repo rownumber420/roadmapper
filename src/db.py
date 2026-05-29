@@ -1,7 +1,6 @@
 import contextlib
-
-import psycopg2
-import psycopg2.extras
+import psycopg
+from psycopg.rows import dict_row
 
 from src.config import get_settings
 
@@ -36,7 +35,7 @@ FROM iteration_logs GROUP BY run_id ORDER BY started_at DESC
 
 @contextlib.contextmanager
 def _conn():
-    conn = psycopg2.connect(get_settings().database_url)
+    conn = psycopg.connect(get_settings().database_url)
     try:
         yield conn
     finally:
@@ -79,13 +78,13 @@ def insert_log(
 
 def get_run_logs(run_id: str) -> list[dict]:
     with _conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(_GET_RUN_LOGS, {"run_id": run_id})
             return [dict(r) for r in cur.fetchall()]
 
 
 def list_runs() -> list[dict]:
     with _conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(_LIST_RUNS)
             return [dict(r) for r in cur.fetchall()]

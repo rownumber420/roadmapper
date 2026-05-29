@@ -10,12 +10,12 @@ from src.db import insert_log
 def build_prompt(initial_idea: str, prior_feedback: str = "") -> str:
     feedback_section = ""
     if prior_feedback:
-        feedback_section = f"PREVIOUS FEEDBACK TO ADDRESS:\n{prior_feedback}\n\n"
+        feedback_section = f"PREVIOUS FEEDBACK TO ADDRESS:\n{prior_feedback}\n"
 
-    return f"""You are in /app. The target codebase is accessible at /app/codebase
-(a symlink to /codebase). Explore /app/codebase thoroughly before writing
-— understand the project structure, existing code conventions, directory
-layout, package structure, and any existing configuration files.
+    return f"""You are in /app. The target codebase is at /app/codebase.
+Explore it thoroughly — understand the project structure, existing code
+conventions, directory layout, package structure, and any existing
+configuration files.
 
 Look for context files in /app/codebase that document project conventions
 (e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
@@ -35,7 +35,9 @@ or based on a misunderstanding, you may note your reasoning in the roadmap
 rather than making the requested change. Explain clearly why the feedback
 does not apply.
 
-{feedback_section}INITIAL IDEA:
+{feedback_section}
+
+INITIAL IDEA:
 {initial_idea}
 """
 
@@ -55,10 +57,6 @@ def writer_node(state: dict) -> dict:
 
     prompt = build_prompt(initial_idea, prior_feedback)
 
-    (output_path / "prompt_idea.md").write_text(initial_idea)
-    if prior_feedback:
-        (output_path / "prompt_feedback.md").write_text(prior_feedback)
-
     agent = get_agent(settings.writer_agent)
     cmd = agent.build_command(prompt, output_path, settings.writer_model)
 
@@ -71,7 +69,9 @@ def writer_node(state: dict) -> dict:
 
     timed_out = False
     try:
-        stdout, stderr = proc.communicate(timeout=settings.writer_timeout)
+        stdout, stderr = proc.communicate(
+            input=agent.get_stdin_data(prompt), timeout=settings.writer_timeout
+        )
     except subprocess.TimeoutExpired:
         proc.kill()
         stdout, stderr = proc.communicate()
@@ -103,6 +103,5 @@ def writer_node(state: dict) -> dict:
         raise subprocess.TimeoutExpired(proc.args, settings.writer_timeout)
 
     return {
-        "run_id": run_id,
         "iteration": iteration,
     }

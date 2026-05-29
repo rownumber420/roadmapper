@@ -1,4 +1,3 @@
-import re
 import subprocess
 from pathlib import Path
 
@@ -6,6 +5,7 @@ from src.agents.base import Agent
 
 
 class GeminiAgent(Agent):
+    """Prompt goes through stdin pipe. The node opens a PIPE, writes encoded prompt bytes via proc.communicate(input=...)"""
     name = "gemini"
 
     def build_command(
@@ -18,7 +18,6 @@ class GeminiAgent(Agent):
             "--skip-trust",
             "--approval-mode", "yolo",
             "--include-directories", "/codebase",
-            "--include-directories", "/app/codebase",
             "--include-directories", "/output",
         ]
 
@@ -28,9 +27,3 @@ class GeminiAgent(Agent):
     @property
     def stdin_mode(self) -> int:
         return subprocess.PIPE
-
-    def parse_status(self, stdout: str) -> bool:
-        match = re.search(
-            r"STATUS:\s*(ACCEPT|REVISE)", stdout, re.IGNORECASE
-        )
-        return bool(match and match.group(1).upper() == "ACCEPT")

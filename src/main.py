@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--reviewer-model", default=None)
     parser.add_argument("--writer-timeout", type=int, default=None)
     parser.add_argument("--reviewer-timeout", type=int, default=None)
-    args = parser.parse_args()
+    args = parser.parse_args()  # --max-iterations -> max_iterations, etc.
 
     overrides = {k: v for k, v in vars(args).items() if v is not None}
     configure(**overrides)

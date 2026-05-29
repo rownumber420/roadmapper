@@ -1,3 +1,5 @@
+""" registry/factory pattern — classes are registered once at import time, and instances are created lazily when needed """
+
 from src.agents.base import Agent, AgentResult
 from src.agents.gemini import GeminiAgent
 from src.agents.opencode import OpenCodeAgent
@@ -5,6 +7,7 @@ from src.agents.opencode import OpenCodeAgent
 _registry: dict[str, type[Agent]] = {}
 
 
+# type[Agent] - the class Agent itself or any subclass of it
 def register(cls: type[Agent]) -> None:
     _registry[cls.name] = cls
 
@@ -22,4 +25,5 @@ register(OpenCodeAgent)
 register(GeminiAgent)
 
 
+# controls what from src.agents import * exports
 __all__ = ["Agent", "AgentResult", "get_agent", "register"]

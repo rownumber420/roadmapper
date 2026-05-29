@@ -1,6 +1,10 @@
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from psycopg import connect as pg_connect
+from psycopg.rows import dict_row
+from langgraph.checkpoint.postgres import PostgresSaver  # why not memory?
+
+from src.config import get_settings
 from src.nodes.reviewer import reviewer_node
 from src.nodes.writer import writer_node
 from src.state import RoadmapState
@@ -23,5 +27,12 @@ def build_graph():
     builder.add_edge(START, "writer_node")
     builder.add_edge("writer_node", "reviewer_node")
     builder.add_conditional_edges("reviewer_node", _should_continue)
-    checkpointer = MemorySaver()
+    conn = pg_connect(
+        get_settings().database_url,
+        autocommit=True,
+        prepare_threshold=0,
+        row_factory=dict_row,
+    )
+    checkpointer = PostgresSaver(conn)
+    checkpointer.setup()
     return builder.compile(checkpointer=checkpointer)

@@ -44,7 +44,7 @@ The project aims to automate the process of turning an initial idea into a detai
   ```
 - **Run Orchestration Workflow:**
   ```bash
-  docker compose run orchestrator --idea /codebase/initial_idea.md --project-dir /codebase
+  docker compose run orchestrator --idea /codebase/initial_idea.md
   ```
 - **Access GUI:** Open `http://localhost:8501` in your browser.
 

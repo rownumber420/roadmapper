@@ -2,7 +2,7 @@
 
 ## Overview
 
-Automate the Writer-Reviewer agent loop for creating and refining a `roadmap.md` from an `initial_idea.md`. Uses LangGraph for orchestration with PostgreSQL for state persistence, both agents (opencode + Gemini CLI) run as subprocesses with full tool access.
+Automate the Writer-Reviewer agent loop for creating and refining a `roadmap.md` from an `initial_idea.md`. Uses LangGraph for orchestration with PostgreSQL for state persistence (via `langgraph-checkpoint-postgres`). Both agents (opencode + Gemini CLI) run as subprocesses with full tool access. Agent-specific subprocess logic is factored into pluggable classes — any agent can serve as writer or reviewer via `--writer-agent`/`--reviewer-agent`.
 
 ## Architecture
 
@@ -61,7 +61,7 @@ START → writer_node → reviewer_node → should_continue()
 roadmap-orchestrator/
 ├── docker-compose.yml          # postgres (always up) + gui + orchestrator (one-shot)
 ├── Dockerfile                  # python:3.12-slim + node (opencode npm) + gemini CLI
-├── requirements.txt            # langgraph, psycopg2-binary, streamlit, pydantic, etc.
+├── requirements.txt            # langgraph, psycopg[binary], streamlit, pydantic, langgraph-checkpoint-postgres
 ├── .env.example
 ├── src/
 │   ├── __init__.py
@@ -147,7 +147,7 @@ class Agent(ABC):
 
 ### GeminiAgent (`src/agents/gemini.py`)
 
-- Constructs `gemini --model <model> --prompt - --skip-trust --approval-mode yolo --include-directories /codebase --include-directories /app/codebase --include-directories /output`
+- Constructs `gemini --model <model> --prompt - --skip-trust --approval-mode yolo --include-directories /codebase --include-directories /output`
 - `stdin_mode = PIPE`, `get_stdin_data()` returns `prompt.encode()`
 - `parse_status()` regex-matches `STATUS: ACCEPT` or `STATUS: REVISE`
 - Both agents are fully symmetric — any agent can serve as writer or reviewer
@@ -170,7 +170,7 @@ register(ClaudeAgent)
 
 ### Writer Node
 
-- Write `initial_idea.md` and any prior feedback as files to `/output/prompt_idea.md` and `/output/prior_feedback.md`
+- Read `initial_idea.md` from `settings.idea_path` and prior feedback from `/output/prior_feedback.md` (written by previous reviewer iteration)
 - Read file contents in Python and inject directly into the prompt string (avoids relying on `@filename` syntax)
 - Resolve agent: `agent = get_agent(settings.writer_agent)`
 - Delegate command building and I/O to the agent
@@ -184,7 +184,7 @@ register(ClaudeAgent)
 - Read both `initial_idea.md` and `roadmap.md`, construct review prompt
 - Resolve agent: `agent = get_agent(settings.reviewer_agent)`
 - Delegate command building, stdin data, and status parsing to the agent
-- Write full reviewer stdout as `/output/prior_feedback.md` (after ANSI stripping)
+- Write only the FEEDBACK section from reviewer stdout as `/output/prior_feedback.md` (content after the `FEEDBACK:` marker, ANSI-stripped)
 - Log all content to `iteration_logs` table
 - Return feedback and `is_stable` flag
 
@@ -226,8 +226,6 @@ docker compose run \
   -v /path/to/output:/output \
   orchestrator \
   --idea /codebase/initial_idea.md \
-  --project-dir /codebase \
-  --output-dir /output \
   --max-iterations 6 \
   --writer-agent opencode \
   --writer-model opencode/deepseek-v4-flash-free \
@@ -275,7 +273,7 @@ def strip_ansi(text: str) -> str:
 - **Timeouts**: Each agent subprocess has a configurable timeout (default 300s) to prevent hangs with free models. Enforced via `subprocess.run(timeout=N)`.
 - **Error recovery**: If an agent crashes or times out, the run is marked `failed` with preserved state for debugging. The `iteration_logs` table still retains all prior iterations.
 - **Iteration limit**: Hard cap at 6 (configurable) to prevent infinite loops.
-- **Structured review output**: Reviewer must output parseable STATUS. Wrap in markers like `---STATUS: ACCEPT---` or `---STATUS: REVISE---`.
+- **Structured review output**: Reviewer prompt enforces strict `FEEDBACK:` / `STATUS: ACCEPT|REVISE` format. The `feedback` column and `prior_feedback.md` extract only content after `FEEDBACK:` — tool traces (stderr) are excluded. `parse_status()` still reads full stdout.
 - **Gemini OAuth token refresh**: Mount `~/.gemini/` as **read-write** (not read-only) so token refreshes don't crash the container.
 - **OpenCode auth**: Verify during development. If API keys are needed, mount `~/.local/share/opencode/auth.json` or use env vars.
 - **ANSI noise**: Strip ANSI escape codes from all captured agent output before storing to state or DB.
@@ -309,25 +307,25 @@ Implement `src/db.py` with `iteration_logs` table creation (run via app start), 
 **Test**: Start postgres container, run a script that creates the table, inserts a row, queries it back.
 
 ### Task 4 — Writer node [DONE]
-Implement `src/nodes/writer.py`. Reads `initial_idea.md` and prior feedback from `/output`, constructs prompt, runs `opencode run --model {model} {prompt}` as subprocess, captures output, strips ANSI, reads resulting `roadmap.md`, logs to DB.
+Implement `src/nodes/writer.py`. Reads `initial_idea.md` from `settings.idea_path` and prior feedback from `/output/prior_feedback.md`, constructs prompt, runs agent subprocess, captures output, strips ANSI, reads resulting `roadmap.md`, logs to DB.
 
 **Files**: `src/nodes/writer.py`
 
 **Test**: Place a test `initial_idea.md` in `/output`, run writer node standalone, verify `roadmap.md` is produced and DB has a row.
 
 ### Task 5 — Reviewer node [DONE]
-Implement `src/nodes/reviewer.py`. Reads `initial_idea.md` (from `settings.idea_path`) and `roadmap.md` (from `settings.output_path`), constructs review prompt that includes both, passes it via `subprocess.Popen` with `stdin=subprocess.PIPE` + `communicate(input=prompt.encode())` to `gemini -`, parses response for `STATUS: ACCEPT` or `STATUS: REVISE`, logs to DB.
+Implement `src/nodes/reviewer.py`. Reads `initial_idea.md` and `roadmap.md`, constructs a structured review prompt that mandates `FEEDBACK:` / `STATUS: ACCEPT|REVISE` format, runs agent subprocess, strips ANSI, extracts only the FEEDBACK section for `prior_feedback.md` and the `feedback` column (tool traces from stderr are excluded), parses full stdout for `STATUS: ACCEPT|REVISE` to determine stability, logs to DB.
 
 **Files**: `src/nodes/reviewer.py`
 
 **Test**: Place a test `initial_idea.md` and `roadmap.md` in `/output`, run reviewer node standalone, verify it returns `is_stable=True/False` and DB has a row.
 
 ### Task 6 — Graph + CLI entry [DONE]
-Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--project-dir`, `--output-dir`, `--max-iterations`, `--writer-agent`, `--writer-model`, `--reviewer-agent`, `--reviewer-model`). CLI args are written to config before graph execution.
+Implement `src/graph.py` (LangGraph StateGraph with writer→reviewer→conditional loop) and `src/main.py` (argparse CLI with `--idea`, `--max-iterations`, `--writer-agent`, `--writer-model`, `--reviewer-agent`, `--reviewer-model`). CLI args are written to config before graph execution.
 
 **Files**: `src/graph.py`, `src/main.py`
 
-**Test**: `docker compose run -v /path/to/target:/codebase:ro -v /path/to/output:/output orchestrator --idea /codebase/initial_idea.md --project-dir /codebase --output-dir /output --max-iterations 3 --writer-agent opencode --writer-model opencode/... --reviewer-agent gemini --reviewer-model gemini-2.0-flash` completes end-to-end.
+**Test**: `docker compose run -v /path/to/target:/codebase:ro -v /path/to/output:/output orchestrator --idea /codebase/initial_idea.md --max-iterations 3 --writer-agent opencode --writer-model opencode/... --reviewer-agent gemini --reviewer-model gemini-2.0-flash` completes end-to-end.
 
 ### Task 7 — Streamlit GUI [IN PROGRESS]
 Implement `gui/app.py`. Connects to PostgreSQL, lists runs, expands to show iterations (prompt, output, feedback, roadmap).

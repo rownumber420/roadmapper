@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 
@@ -8,15 +9,7 @@ from src.db import insert_log
 
 
 def build_review_prompt(initial_idea: str, roadmap_content: str) -> str:
-    return f"""You are in /app. The target codebase is mounted at /codebase
-and also accessible via /app/codebase (symlink). Explore /codebase
-thoroughly before writing — understand the project structure, existing
-code conventions, directory layout, package structure, and any existing
-configuration files.
-
-Look for context files in /codebase that document project conventions
-(e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
-Use them to align the roadmap with the project's actual setup.
+    return f"""You are reviewing a roadmap for the codebase at /app/codebase.
 
 THIS IS A ROADMAP REVIEW ONLY. DO NOT modify any files. DO NOT write code.
 DO NOT create, edit, or delete any files. Read-only analysis.
@@ -31,10 +24,23 @@ Check that:
 - Proposed tasks are compatible with the existing architecture
 - Scope is proportional (no gold-plating, no omissions)
 
-List all issues under FEEDBACK: <issues>. Then output STATUS: ACCEPT or REVISE.
+Read the specific files needed to verify roadmap claims.
+Try not to glob or grep the entire codebase.
+
+Your response must follow this structure:
+
+FEEDBACK:
+- <each issue on its own line>
+
+STATUS: ACCEPT or STATUS: REVISE
+
 Only use STATUS: ACCEPT if the roadmap has zero issues — no errors, no omissions,
-no concerns at all. If you have even one actionable item under <issues>, use STATUS: REVISE.
+no concerns at all. If you have even one actionable item, use STATUS: REVISE.
 Be critical.
+
+The very last line of your response MUST be exactly one of:
+STATUS: ACCEPT
+STATUS: REVISE
 
 INITIAL IDEA:
 {initial_idea}
@@ -42,6 +48,14 @@ INITIAL IDEA:
 ROADMAP:
 {roadmap_content}
 """
+
+
+def parse_status(stdout: str) -> bool:
+    """Parse the agent's captured stdout to determine if the review passed."""
+    match = re.search(
+        r"STATUS:\s*(ACCEPT|REVISE)", stdout, re.IGNORECASE
+    )
+    return bool(match and match.group(1).upper() == "ACCEPT")
 
 
 def reviewer_node(state: dict) -> dict:
@@ -83,9 +97,16 @@ def reviewer_node(state: dict) -> dict:
         stderr.decode(errors="replace") if isinstance(stderr, bytes) else ""
     )
 
-    (output_path / "prior_feedback.md").write_text(strip_ansi(stdout_str))
+    full_text = strip_ansi(stdout_str)
 
-    is_stable = agent.parse_status(stdout_str)
+    # strip out any conversational preamble the agent may produce before the structured FEEDBACK: section
+    feedback_text = full_text
+    if "FEEDBACK:" in full_text:
+        feedback_text = "FEEDBACK:" + full_text.split("FEEDBACK:", 1)[1]
+
+    (output_path / "prior_feedback.md").write_text(feedback_text)
+
+    is_stable = parse_status(stdout_str)
 
     run_id = state.get("run_id", "")
     iteration = state.get("iteration", 0)
@@ -95,7 +116,7 @@ def reviewer_node(state: dict) -> dict:
         iteration=iteration,
         node_type="reviewer",
         raw_output=strip_ansi(stdout_str + "\n" + stderr_str),
-        feedback=strip_ansi(stdout_str),
+        feedback=feedback_text,
         roadmap_content=roadmap_content,
         prompt=prompt,
     )
@@ -104,7 +125,6 @@ def reviewer_node(state: dict) -> dict:
         raise subprocess.TimeoutExpired(proc.args, settings.reviewer_timeout)
 
     return {
-        "run_id": run_id,
         "iteration": iteration,
         "is_stable": is_stable,
     }

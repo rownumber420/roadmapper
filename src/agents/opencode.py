@@ -1,4 +1,3 @@
-import re
 import subprocess
 from pathlib import Path
 
@@ -6,6 +5,7 @@ from src.agents.base import Agent
 
 
 class OpenCodeAgent(Agent):
+    """Prompt goes as a CLI argument (or as a temp file reference when too long for ARG_MAX). Stdin is unused."""
     name = "opencode"
 
     def build_command(
@@ -29,12 +29,6 @@ class OpenCodeAgent(Agent):
             prompt,
         ]
 
-    def parse_status(self, stdout: str) -> bool:
-        match = re.search(
-            r"STATUS:\s*(ACCEPT|REVISE)", stdout, re.IGNORECASE
-        )
-        return bool(match and match.group(1).upper() == "ACCEPT")
-
     @property
     def stdin_mode(self) -> int:
-        return subprocess.DEVNULL
+        return subprocess.DEVNULL  # agent doesn't read stdin, pipe is closed
