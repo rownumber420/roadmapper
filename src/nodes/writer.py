@@ -21,14 +21,16 @@ Look for context files in /app/codebase that document project conventions
 (e.g. AGENTS.md, GEMINI.md, .opencode.json, CLAUDE.md, etc.).
 Use them to align the roadmap with the project's actual setup.
 
-Read the initial idea below and create a roadmap.md file at /output/roadmap.md.
+Read the initial idea below and create or update a roadmap.md file at /output/roadmap.md.
+If /output/roadmap.md already exists, read it — that is your previous
+iteration's output, which you should revise to address any feedback below.
 Each task should:
 - Be atomic (one deliverable each)
-- Reference real file paths in /app/codebase
-- Include a short code example or diff where applicable
+- Do not write /app/codebase/ in the roadmap — use paths relative to the project root instead
+- Optionally include a short code example where applicable (no more than 10 lines)
 - Have a clear verification step
 
-Only create /output/roadmap.md. Do not modify anything in /app/codebase.
+Only update or create /output/roadmap.md. Do not modify anything in /app/codebase.
 
 If the PREVIOUS FEEDBACK contains an item you believe is a false alarm
 or based on a misunderstanding, you may note your reasoning in the roadmap

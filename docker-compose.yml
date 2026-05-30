@@ -39,6 +39,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://roadmapper:roadmapper@postgres:5432/roadmapper
+      STREAMLIT_THEME_BASE: dark
+      PYTHONPATH: /app
     volumes:
       - gemini_config:/home/appuser/.gemini
     command: streamlit run gui/app.py

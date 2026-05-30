@@ -2,6 +2,7 @@
 
 ## Workflow Rules
 - Never commit without explicit user approval.
+- Never delete existing comments in the code.
 
 ## Architecture
 

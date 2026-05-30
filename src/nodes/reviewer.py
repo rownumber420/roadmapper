@@ -21,6 +21,9 @@ Check that:
 - Each task has a clear verification step
 - Referenced file paths and modules actually exist
 - Code examples match the project's real patterns and conventions
+- Code examples are concise — they should demonstrate or explain a
+  pattern, not be a complete implementation
+- File paths use project-root notation, not /app/codebase/
 - Proposed tasks are compatible with the existing architecture
 - Scope is proportional (no gold-plating, no omissions)
 
@@ -32,15 +35,13 @@ Your response must follow this structure:
 FEEDBACK:
 - <each issue on its own line>
 
-STATUS: ACCEPT or STATUS: REVISE
+The very last line of your response MUST be exactly one of:
+STATUS: ACCEPT
+STATUS: REVISE
 
 Only use STATUS: ACCEPT if the roadmap has zero issues — no errors, no omissions,
 no concerns at all. If you have even one actionable item, use STATUS: REVISE.
 Be critical.
-
-The very last line of your response MUST be exactly one of:
-STATUS: ACCEPT
-STATUS: REVISE
 
 INITIAL IDEA:
 {initial_idea}
