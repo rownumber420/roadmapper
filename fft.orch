@@ -1,0 +1,10 @@
+PROJECT_DIR=/home/${USERNAME}/repos/garmin/Nodal
+IDEA_FILE=/home/${USERNAME}/repos/garmin/Nodal/research/fft_idea.md
+OUTPUT_DIR=/home/${USERNAME}/repos/garmin/Nodal/research
+MAX_ITERATIONS=10
+WRITER_AGENT=opencode
+WRITER_MODEL=opencode/deepseek-v4-flash-free
+WRITER_TIMEOUT=300
+REVIEWER_AGENT=gemini
+REVIEWER_MODEL=gemini-3-flash-preview
+REVIEWER_TIMEOUT=300
