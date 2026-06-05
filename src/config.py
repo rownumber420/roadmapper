@@ -8,6 +8,7 @@ _settings: Optional["Settings"] = None
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    task_id: Optional[str] = None
     writer_agent: str = "opencode"
     writer_model: str = "opencode/deepseek-v4-flash-free"
     reviewer_agent: str = "gemini"

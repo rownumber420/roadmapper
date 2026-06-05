@@ -51,6 +51,7 @@ fi
 
 # ── Apply defaults for any setting not defined in the config ───────────────
 # ${VAR:-default} means: use $VAR if set (even if empty), otherwise use "default".
+TASK_ID="${TASK_ID:-}"
 MAX_ITERATIONS="${MAX_ITERATIONS:-10}"
 WRITER_AGENT="${WRITER_AGENT:-opencode}"
 WRITER_MODEL="${WRITER_MODEL:-opencode/deepseek-v4-flash-free}"
@@ -59,13 +60,8 @@ REVIEWER_AGENT="${REVIEWER_AGENT:-gemini}"
 REVIEWER_MODEL="${REVIEWER_MODEL:-gemini-3-flash-preview}"
 REVIEWER_TIMEOUT="${REVIEWER_TIMEOUT:-300}"
 
-# ── Build the docker compose command as an array ───────────────────────────
-# Each element is one word ("$@" is expanded separately at the end), so paths
-# with spaces stay intact.
-CMD=(docker compose run --rm
-  -v "$PROJECT_DIR:/codebase:ro"
-  -v "$OUTPUT_DIR:/output"
-  orchestrator
+# ── Build orchestrator args ─────────────────────────────────────────────────
+ORCH_ARGS=(
   --idea "/app/codebase/$REL_IDEA"
   --max-iterations "$MAX_ITERATIONS"
   --writer-agent "$WRITER_AGENT"
@@ -74,6 +70,17 @@ CMD=(docker compose run --rm
   --reviewer-agent "$REVIEWER_AGENT"
   --reviewer-model "$REVIEWER_MODEL"
   --reviewer-timeout "$REVIEWER_TIMEOUT"
+)
+[ -n "$TASK_ID" ] && ORCH_ARGS+=(--task-id "$TASK_ID")
+
+# ── Build the docker compose command as an array ───────────────────────────
+# Each element is one word ("$@" is expanded separately at the end), so paths
+# with spaces stay intact.
+CMD=(docker compose run --rm
+  -v "$PROJECT_DIR:/codebase:ro"
+  -v "$OUTPUT_DIR:/output"
+  orchestrator
+  "${ORCH_ARGS[@]}"
   "$@"
 )
 

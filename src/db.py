@@ -7,7 +7,7 @@ from src.config import get_settings
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS iteration_logs (
     id SERIAL PRIMARY KEY,
-    run_id UUID NOT NULL,
+    run_id VARCHAR(255) NOT NULL,
     iteration INT NOT NULL,
     node_type VARCHAR(20) NOT NULL,
     raw_output TEXT,

@@ -1,6 +1,7 @@
 PROJECT_DIR=/home/${USERNAME}/repos/garmin/Nodal
 IDEA_FILE=/home/${USERNAME}/repos/garmin/Nodal/research/fft_idea.md
 OUTPUT_DIR=/home/${USERNAME}/repos/garmin/Nodal/research
+# TASK_ID=my-project  # set to reuse saved state on re-run
 MAX_ITERATIONS=10
 WRITER_AGENT=opencode
 WRITER_MODEL=opencode/deepseek-v4-flash-free

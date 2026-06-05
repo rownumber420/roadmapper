@@ -7,7 +7,7 @@ A LangGraph-based orchestrator that runs two AI agents in a feedback loop: a **W
 ## Prerequisites
 
 - Docker + Docker Compose
-- Gemini CLI credentials — see [GEMINI.md](GEMINI.md) for setup
+- Authenticate in Gemini CLI on your host system first (run `gemini` and sign in); Docker copies `~/.gemini/` into the container.
 
 ## Quick start
 
@@ -28,8 +28,12 @@ PROJECT_DIR=/home/user/my-project
 IDEA_FILE=docs/initial_idea.md
 OUTPUT_DIR=/home/user/my-project/output
 MAX_ITERATIONS=10
+WRITER_AGENT=opencode
 WRITER_MODEL=opencode/deepseek-v4-flash-free
-REVIEWER_MODEL=gemini-3.1-flash-lite-preview
+WRITER_TIMEOUT=300
+REVIEWER_AGENT=gemini
+REVIEWER_MODEL=gemini-3-flash-preview
+REVIEWER_TIMEOUT=300
 ```
 
 Paths can be absolute or relative to `PROJECT_DIR`.

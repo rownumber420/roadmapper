@@ -16,6 +16,7 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="Roadmapper orchestrator")
     parser.add_argument("--idea", dest="idea_path", default=None)
+    parser.add_argument("--task-id", default=None)
     parser.add_argument("--max-iterations", type=int, default=None)
     parser.add_argument("--writer-agent", default=None)
     parser.add_argument("--writer-model", default=None)
@@ -29,7 +30,7 @@ def main():
     configure(**overrides)
     settings = get_settings()
 
-    run_id = str(uuid.uuid4())
+    run_id = settings.task_id if settings.task_id else str(uuid.uuid4())
     ensure_table()
 
     graph = build_graph()
