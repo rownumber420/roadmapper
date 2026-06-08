@@ -24,6 +24,7 @@ This starts PostgreSQL (state storage) and the Streamlit GUI (browse runs at `ht
 A config file is a shell script that sets paths and parameters. Example (`my-project.orch`):
 
 ```bash
+TASK_ID=some_readable_id
 PROJECT_DIR=/home/user/my-project
 IDEA_FILE=docs/initial_idea.md
 OUTPUT_DIR=/home/user/my-project/output
@@ -56,6 +57,7 @@ Preview the command without running:
 
 | Variable | Default | Description |
 |---|---|---|
+| `TASK_ID` | *(auto UUID)* | Meaningful name for the run; re-use to resume from last checkpoint |
 | `PROJECT_DIR` | *(required)* | Host path to the project being roadmapped |
 | `IDEA_FILE` | *(required)* | Path to the initial idea markdown file |
 | `OUTPUT_DIR` | *(required)* | Host path where `roadmap.md` is written |
@@ -78,25 +80,23 @@ Open `http://localhost:8501` after starting the gui service. The dashboard shows
 ## Project structure
 
 ```
-├── docker-compose.yml     # Infrastructure definition
+├── docker-compose.yml      # Infrastructure definition
 ├── Dockerfile              # Container image for orchestrator + gui
 ├── entrypoint.sh           # Container entrypoint (symlink, Gemini auth, dispatch)
 ├── run_roadmapper.sh       # Config-driven wrapper for docker compose run
-├── fft.orch                # Example config file
+├── lfhf.orch                # Example config file
 ├── .env.example            # Template for .env
-├── GEMINI.md               # Gemini CLI setup guide
-├── specs/archive/          # Example idea and output (project-specific)
 ├── gui/
 │   └── app.py              # Streamlit run browser
 └── src/
     ├── main.py             # CLI entry point
     ├── graph.py            # LangGraph state machine
     ├── config.py           # pydantic-settings config
-    ├── db.py               # PostgreSQL iteration log CRUD
+    ├── db.py               # PostgreSQL iteration log
     ├── ansi.py             # ANSI escape code stripping
     ├── nodes/
-    │   ├── writer.py       # Writer node (prompts opencode)
-    │   └── reviewer.py     # Reviewer node (prompts gemini CLI)
+    │   ├── writer.py       # Writer node
+    │   └── reviewer.py     # Reviewer node
     └── agents/
         ├── __init__.py     # Agent registry (register/get_agent)
         ├── base.py         # Agent ABC

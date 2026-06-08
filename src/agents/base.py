@@ -1,12 +1,5 @@
-import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-
-
-class AgentResult:
-    def __init__(self, stdout: str, stderr: str):
-        self.stdout = stdout
-        self.stderr = stderr
 
 
 class Agent(ABC):

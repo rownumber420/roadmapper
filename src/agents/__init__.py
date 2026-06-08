@@ -1,6 +1,6 @@
 """ registry/factory pattern — classes are registered once at import time, and instances are created lazily when needed """
 
-from src.agents.base import Agent, AgentResult
+from src.agents.base import Agent
 from src.agents.gemini import GeminiAgent
 from src.agents.opencode import OpenCodeAgent
 
@@ -26,4 +26,4 @@ register(GeminiAgent)
 
 
 # controls what from src.agents import * exports
-__all__ = ["Agent", "AgentResult", "get_agent", "register"]
+__all__ = ["Agent", "get_agent", "register"]

@@ -7,7 +7,7 @@ import difflib
 import itertools
 import time
 
-RUN_ID_DISPLAY_LENGTH = 8
+RUN_ID_DISPLAY_LENGTH = 18
 
 import streamlit as st
 

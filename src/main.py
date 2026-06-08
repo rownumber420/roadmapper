@@ -16,6 +16,8 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="Roadmapper orchestrator")
     parser.add_argument("--idea", dest="idea_path", default=None)
+    # --task-id: meaningful name instead of UUID; reusing the same task-id
+    # resumes from the last checkpoint in the DB via PostgresSaver
     parser.add_argument("--task-id", default=None)
     parser.add_argument("--max-iterations", type=int, default=None)
     parser.add_argument("--writer-agent", default=None)
@@ -45,12 +47,24 @@ def main():
     config = {"configurable": {"thread_id": run_id}}
     run_start = time.time()
 
+    # Check if this thread already has checkpointed state from a prior run.
+    # If so, resume from where it left off (e.g. after a crash/timeout).
+    # If not, seed the initial state and start fresh.
+    existing = graph.get_state(config)
+
     print(f"[{_ts()}] Run {run_id} started")
 
     phase_start = run_start
 
     try:
-        for event in graph.stream(initial_state, config, stream_mode="updates"):
+        if existing and existing.values.get("run_id"):
+            # thread exists → resume without overwriting checkpointed data
+            stream = graph.stream(None, config, stream_mode="updates")
+        else:
+            # fresh thread → seed initial state and start from START
+            stream = graph.stream(initial_state, config, stream_mode="updates")
+
+        for event in stream:
             for node_name, output in event.items():
                 now = time.time()
                 elapsed = now - phase_start

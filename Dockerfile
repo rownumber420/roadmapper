@@ -14,14 +14,17 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 
 RUN npm install -g opencode-ai
 
-ARG GEMINI_VERSION=v0.43.0
-RUN curl -L \
-    "https://github.com/google-gemini/gemini-cli/releases/download/${GEMINI_VERSION}/gemini-cli-bundle.zip" \
-    -o /tmp/gemini.zip \
-    && unzip /tmp/gemini.zip -d /opt/gemini-cli \
-    && chmod +x /opt/gemini-cli/gemini.js \
-    && ln -s /opt/gemini-cli/gemini.js /usr/local/bin/gemini \
-    && rm /tmp/gemini.zip
+# Alternative (version-pinned from GitHub release):
+# ARG GEMINI_VERSION=v0.43.0
+# RUN curl -L \
+#     "https://github.com/google-gemini/gemini-cli/releases/download/${GEMINI_VERSION}/gemini-cli-bundle.zip" \
+#     -o /tmp/gemini.zip \
+#     && unzip /tmp/gemini.zip -d /opt/gemini-cli \
+#     && chmod +x /opt/gemini-cli/gemini.js \
+#     && ln -s /opt/gemini-cli/gemini.js /usr/local/bin/gemini \
+#     && rm /tmp/gemini.zip
+
+RUN npm install -g @google/gemini-cli
 
 ENV GEMINI_CLI_TRUST_WORKSPACE=true
 
